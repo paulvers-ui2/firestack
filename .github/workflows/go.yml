@@ -158,12 +158,37 @@ jobs:
         fail-build: false
         output-format: "sarif"
 
+    # Grype scans the SBOM, not source files, so its SARIF results carry no
+    # file location and code scanning rejects them ("expected artifact
+    # location"). Attach findings without one to go.mod, where Go module
+    # versions are declared, and list them in the run summary.
+    - name: 🩹 Grype SARIF locations + summary
+      id: grfix
+      if: ${{ steps.gr.outcome == 'success' && steps.gr.outputs.sarif != '' }}
+      env:
+        SARIF_IN: ${{ steps.gr.outputs.sarif }}
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/grype-located.sarif"
+        jq '(.runs[].results[]?) |= (if (((.locations // [])[0].physicalLocation.artifactLocation.uri // "") == "") then .locations = [{"physicalLocation":{"artifactLocation":{"uri":"go.mod"},"region":{"startLine":1}}}] else . end)' "$SARIF_IN" > "$out"
+        echo "sarif=$out" >> "$GITHUB_OUTPUT"
+        n=$(jq '[.runs[].results[]?] | length' "$out")
+        {
+          echo "### 🎞 Grype findings ($n)"
+          echo
+          echo "Version-based matching on the SBOM (no reachability analysis; govulncheck in 🔮 Vet is the reachability-aware check)."
+          echo
+          jq -r '.runs[].results[]? | "- `\(.ruleId)`: \(.message.text | split("\n")[0])"' "$out" | sort -u | head -60
+        } >> "$GITHUB_STEP_SUMMARY"
+        jq -r '.runs[].results[]? | "\(.ruleId) | \(.message.text | split("\n")[0])"' "$out" | sort -u | head -60
+
     - name: 📻 Grype to code-scanning
-      if: success()
+      if: ${{ steps.grfix.outcome == 'success' }}
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
-        sarif_file: ${{ steps.gr.outputs.sarif }}
+        sarif_file: ${{ steps.grfix.outputs.sarif }}
+        category: grype
 
     - name: 🛸 After Make
       if: ${{ steps.make.outcome == 'success' && steps.sbom-upload.outcome == 'success' }}
