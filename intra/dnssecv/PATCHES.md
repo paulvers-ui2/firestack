@@ -35,10 +35,47 @@ dropped (they need `testify`; run them upstream before each re-vendor).
   trace labels; replaced with 16 bytes from `crypto/rand`. One fewer
   dependency (NIST SSDF PW.4).
 
+- **P6 — canonical name ordering fix** (`dnssec/doe/functions.go`, found
+  by CodeQL). Upstream decoded `\DDD` escapes with `string(rune(n))`, which
+  emits UTF-8 (`\200` → bytes `C3 88`, not `0xC8`) and accepted values above
+  255. It also left `\X` escapes undecoded and didn't lowercase escaped
+  letters. Any of these can mis-order NSEC owner names (RFC 4034 §6.1) and so
+  break denial-of-existence proofs for names containing escaped octets.
+  Covered by `functions_firestack_test.go`. **Worth reporting upstream.**
+- **P7 — RRSIG validity clamp** (`dnssec/authenticate_rrset.go`, gosec
+  G115). An expired signature made the remaining-validity delta negative,
+  which wrapped to a huge `uint32`. Now clamped to `[0, MaxUint32]`.
+- **P8 — errors no longer dropped** (`resolver_exchange.go`,
+  `zone_factory.go`, gosec G104). Logged via the resolver's Warn/Debug hooks.
+
+- **P9 — nil safety** (`cname.go`, `nameserver.go`, `dnssec/doe/functions.go`,
+  `dnssec/authenticate_rrset.go`, `dnssec/verify_dnskey.go`; found by
+  nilaway in CI). The important one: `verify_dnskey.go` called
+  `k.ToDS(d.DigestType).Digest` with the digest type taken from the parent's
+  DS record on the network. `ToDS` returns nil for types miekg/dns doesn't
+  implement (e.g. GOST, 3), so **a zone publishing such a DS crashed the
+  lookup**. An undigestable DS now just doesn't match (RFC 4035 §5.2).
+  Covered by `verify_dnskey_firestack_test.go`. **Worth reporting upstream.**
+
+- **P10 — more nil safety** (nilaway, second pass). Real crash paths fixed:
+  `pool_exchange.go` dereferenced a nil response when no nameserver of either
+  address family was available; `resolver_exchange.go` indexed
+  `knownZones[0]` on an empty zone list; `Exchange`, `nameserver.exchange`
+  and `Authenticator.AddResponse` indexed `Question[0]` on question-less
+  messages (the last one on responses straight from the network). Plus
+  explicit guards in `zones.add`, root-hint parsing, pool building and
+  `Response.truncated`.
+
+  Remaining nilaway reports in `resolver/` are reviewed false positives:
+  `net.IP(nil).String()` is safe in Go, and `Question` flows through
+  `msg.Copy()` are rejected at the new entry guards. CI therefore runs
+  nilaway **strict on all firestack code except `resolver/`**, and
+  **report-only on `resolver/`** (`.github/workflows/go.yml`, 🔮 Vet).
+
 ## Re-vendoring checklist
 
 1. Diff upstream against the pinned SHA; read every change in `dnssec/`.
-2. Re-apply P1–P5; `grep -rn "FIRESTACK PATCH"` must list them all.
+2. Re-apply P1–P10; `grep -rn "FIRESTACK PATCH"` must list them all.
 3. Run upstream's own tests in a scratch checkout.
 4. `go test -race ./intra/dnssecv/...` here, then `DNSSECV_LIVE=1` on a
    network that allows UDP/TCP 53.

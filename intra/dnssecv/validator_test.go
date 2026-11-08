@@ -31,9 +31,15 @@ func (f *fakeEx) Exchange(ctx context.Context, m *dns.Msg) *resolver.Response {
 }
 
 func answer(m *dns.Msg, auth dnssec.AuthenticationResult) *resolver.Response {
+	if m == nil || len(m.Question) == 0 {
+		panic("test fixture: query without question")
+	}
 	r := new(dns.Msg)
 	r.SetReply(m)
-	rr, _ := dns.NewRR(m.Question[0].Name + " 300 IN A 192.0.2.1")
+	rr, err := dns.NewRR(m.Question[0].Name + " 300 IN A 192.0.2.1")
+	if err != nil || rr == nil {
+		panic("test fixture: bad RR")
+	}
 	r.Answer = []dns.RR{rr}
 	return &resolver.Response{Msg: r, Auth: auth}
 }
@@ -218,7 +224,10 @@ func TestCacheBoundsAndTTL(t *testing.T) {
 	put := func(name string, ttl uint32) {
 		m := new(dns.Msg)
 		m.SetQuestion(name, dns.TypeA)
-		rr, _ := dns.NewRR(name + " 1 IN A 192.0.2.1")
+		rr, err := dns.NewRR(name + " 1 IN A 192.0.2.1")
+		if err != nil || rr == nil {
+			t.Fatalf("bad fixture %q: %v", name, err)
+		}
 		rr.Header().Ttl = ttl
 		m.Answer = []dns.RR{rr}
 		_ = c.Update(".", m.Question[0], m)
@@ -241,8 +250,9 @@ func TestCacheBoundsAndTTL(t *testing.T) {
 	m := new(dns.Msg)
 	m.SetQuestion("t.", dns.TypeA)
 	m.Truncated = true
-	_ = c.Update(".", m.Question[0], m)
-	if got, _ := c.Get(".", m.Question[0]); got != nil {
+	q := dns.Question{Name: "t.", Qtype: dns.TypeA, Qclass: dns.ClassINET}
+	_ = c.Update(".", q, m)
+	if got, _ := c.Get(".", q); got != nil {
 		t.Error("cached a truncated response")
 	}
 }

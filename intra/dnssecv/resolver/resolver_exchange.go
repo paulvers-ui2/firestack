@@ -3,8 +3,8 @@ package resolver
 import (
 	"context"
 	"fmt"
-	"github.com/miekg/dns"
 	"github.com/celzero/firestack/intra/dnssecv/resolver/dnssec"
+	"github.com/miekg/dns"
 	"sync/atomic"
 	"time"
 )
@@ -13,6 +13,10 @@ import (
 // And a private exchange(), to meet the exchanger interface.
 
 func (resolver *Resolver) Exchange(ctx context.Context, qmsg *dns.Msg) *Response {
+	// FIRESTACK PATCH (P10): nil / question-less queries are rejected up front.
+	if qmsg == nil || len(qmsg.Question) == 0 {
+		return newResponseError(fmt.Errorf("resolver: query has no question"))
+	}
 	if !qmsg.RecursionDesired {
 		return newResponseError(ErrNotRecursionDesired)
 	}
@@ -22,7 +26,9 @@ func (resolver *Resolver) Exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	response := resolver.exchange(ctx, qmsg.Copy())
 
 	if !response.IsEmpty() {
-		response.Msg.RecursionAvailable = true
+		if response.Msg != nil { // FIRESTACK PATCH (P10): explicit guard
+			response.Msg.RecursionAvailable = true
+		}
 	}
 
 	return response
@@ -78,6 +84,11 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	// They are ordered most specific (i.e. longest FQDN), to shortest.
 	// The last element will always be the root (.).
 	knownZones := resolver.zones.getZoneList(qmsg.Question[0].Name)
+	// FIRESTACK PATCH (P10): getZoneList returns nil before the root is
+	// registered; indexing knownZones[0] below would panic.
+	if len(knownZones) == 0 || knownZones[0] == nil {
+		return newResponseError(fmt.Errorf("resolver: no known zones for [%s]", qmsg.Question[0].Name))
+	}
 
 	if auth != nil {
 		// Lookup the DNSSEC details for these zones.
@@ -143,11 +154,12 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 
 	response := z.exchange(ctx, qmsg)
 
-	if response.HasError() {
+	// FIRESTACK PATCH (P10): explicit checks so Msg != nil is visible below.
+	if response != nil && response.Err != nil {
 		return nil, response
 	}
 
-	if response.IsEmpty() {
+	if response == nil || response.Msg == nil {
 		return nil, newResponseError(fmt.Errorf("%w - without an error. mysterious", ErrEmptyResponse))
 	}
 
@@ -158,7 +170,10 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 	//---
 
 	if auth != nil {
-		auth.addResponse(z, response.Msg)
+		// FIRESTACK PATCH (P8): surface the error instead of dropping it.
+		if err := auth.addResponse(z, response.Msg); err != nil {
+			Warn(fmt.Sprintf("dnssec: queueing response for authentication failed: %v", err))
+		}
 	}
 
 	if len(response.Msg.Answer) == 0 && recordsOfTypeExist(response.Msg.Ns, dns.TypeNS) && !recordsOfTypeExist(response.Msg.Ns, dns.TypeSOA) {

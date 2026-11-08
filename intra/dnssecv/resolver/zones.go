@@ -80,6 +80,9 @@ func (zones *zones) get(name string) zone {
 }
 
 func (zones *zones) add(z zone) {
+	if z == nil { // FIRESTACK PATCH (P10):
+		return
+	}
 	name := canonicalName(z.name())
 	zones.lock.Lock()
 	if zones.zones == nil {
