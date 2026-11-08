@@ -39,7 +39,7 @@ jobs:
           step "go get" go get golang.org/x/net@v0.61.0  # pulls x/text v0.43.0 (>= v0.39.0 fixes GO-2026-5970)
           step "go mod tidy" go mod tidy
           step "go mod verify" go mod verify
-          step "go build" go build ./...
+          step "go build" go build -ldflags=-checklinkname=0 ./...  # same flag as make-aar (runtime linkname)
           step "go vet dnssecv" go vet ./intra/dnssecv/...
           git rm -q .github/workflows/tmp-bump-deps.yml
           git config user.name "github-actions[bot]"
