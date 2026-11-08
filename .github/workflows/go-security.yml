@@ -1,0 +1,127 @@
+name: 🛡️ Go security (tests, gosec, govulncheck, CodeQL)
+
+# NIST SSDF PW.7/PW.8 (review + test code), RV.1 (find vulns continuously).
+# The existing AAARRR workflow builds the .aar but runs no tests; this one
+# gates PRs on the DNSSEC validator's tests and on Go security scanners.
+on:
+  push:
+    branches: [main, n2]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1' # weekly: new CVEs / new CodeQL queries find old code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests (race)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: go vet + test (dnssecv)
+        run: |
+          go vet ./intra/dnssecv/...
+          go test -race -count=1 ./intra/dnssecv/...
+      - name: Patch markers still present
+        # Re-vendoring must not silently drop the security patches.
+        run: |
+          n=$(grep -rn "FIRESTACK PATCH" intra/dnssecv/resolver | wc -l)
+          echo "patch markers: $n"
+          test "$n" -ge 5 || { echo "::error::vendored resolver lost FIRESTACK PATCH markers (see PATCHES.md)"; exit 1; }
+      - name: Cross-compile android/arm64
+        env: { GOOS: android, GOARCH: arm64, CGO_ENABLED: "0" }
+        run: go build ./intra/dnssecv/...
+
+  live:
+    name: Live DNSSEC self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # GitHub runners normally allow outbound port 53. Non-blocking: an outage
+    # of a test zone must not block merges, but a "broken" verdict is printed.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - run: DNSSECV_LIVE=1 go test -count=1 -v -run Live ./intra/dnssecv/
+
+  gosec:
+    name: gosec (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: Run gosec
+        # Pinned tool version; bump deliberately. Report-only on the whole
+        # tree (inherited findings), so the job uploads SARIF and does not fail.
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+          "$(go env GOPATH)/bin/gosec" -no-fail -fmt sarif -out gosec.sarif ./...
+      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+  govulncheck:
+    name: govulncheck (known CVEs in deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: Run govulncheck
+        # Fails only on vulnerabilities whose vulnerable code is reachable.
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  codeql:
+    name: CodeQL (go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: go
+          build-mode: autobuild
+          queries: security-extended
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:go

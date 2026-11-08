@@ -1,0 +1,47 @@
+# Vendored code in `intra/dnssecv`
+
+| Path | Upstream | Licence | Pinned at |
+|---|---|---|---|
+| `resolver/` | github.com/nsmithuk/resolver | MIT (`resolver/LICENSE`) | default branch, cloned 2026-11-07 |
+| `anchors/` | github.com/nsmithuk/dnssec-root-anchors-go | MIT (`anchors/LICENSE`) | default branch, cloned 2026-11-07 |
+
+Record the exact upstream commit SHAs here when you merge
+(`git ls-remote https://github.com/nsmithuk/resolver HEAD`).
+
+Upstream marks the resolver **alpha**. The wrapper (`validator.go`) therefore
+fails closed: any error, timeout or recovered panic is reported as `Unknown`,
+never `Secure`.
+
+Mechanical changes: import paths rewritten to
+`github.com/celzero/firestack/intra/dnssecv/...`; upstream `_test.go` files
+dropped (they need `testify`; run them upstream before each re-vendor).
+
+## Functional patches (grep for `FIRESTACK PATCH`)
+
+- **P1 — injectable dialer** (`config.go`, `nameserver.go`, `ipv6.go`).
+  `DialerFactory` supplies the `net.Dialer` for every query. On Android it
+  must protect sockets via `VpnService.protect()`, or queries loop back into
+  the TUN and firestack's DNS trap answers them from the DoH upstream.
+- **P2 — configurable timeouts** (`config.go`, `nameserver.go`). Upstream's
+  150 ms UDP / 600 ms TCP constants are tuned for servers; mobile links need
+  more. `TimeoutUDP` / `TimeoutTCP` vars (wrapper sets 900 ms / 2 s).
+- **P3 — no network I/O at package init** (`config.go`). Upstream started an
+  IPv6 probe in `init()`, i.e. at app start, before any dialer was installed,
+  sending unprotected packets into the tunnel. Now lazy.
+- **P4 — refreshable IPv6 probe** (`ipv6.go`). Upstream's package-level
+  `sync.Once` could never re-probe after Wi-Fi ⇄ mobile.
+  `ResetIPv6Availability()` added.
+- **P5 — dropped `github.com/google/uuid`** (`trace.go`). Only used for log
+  trace labels; replaced with 16 bytes from `crypto/rand`. One fewer
+  dependency (NIST SSDF PW.4).
+
+## Re-vendoring checklist
+
+1. Diff upstream against the pinned SHA; read every change in `dnssec/`.
+2. Re-apply P1–P5; `grep -rn "FIRESTACK PATCH"` must list them all.
+3. Run upstream's own tests in a scratch checkout.
+4. `go test -race ./intra/dnssecv/...` here, then `DNSSECV_LIVE=1` on a
+   network that allows UDP/TCP 53.
+5. Check `anchors/embedded.go` still lists the current IANA root KSKs
+   (20326 = KSK-2017, 38696 = KSK-2024) against
+   https://data.iana.org/root-anchors/root-anchors.xml.
