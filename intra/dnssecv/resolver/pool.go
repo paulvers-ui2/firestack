@@ -229,7 +229,9 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 }
 
 func (pool *nameserverPool) updateIPCount() {
+	// #nosec G115 -- nameserver list lengths are tiny (bounded by referral size)
 	pool.ipv4Count.Store(uint32(len(pool.ipv4)))
+	// #nosec G115 -- as above
 	pool.ipv6Count.Store(uint32(len(pool.ipv6)))
 }
 

@@ -158,7 +158,10 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 	//---
 
 	if auth != nil {
-		auth.addResponse(z, response.Msg)
+		// FIRESTACK PATCH (P8): surface the error instead of dropping it.
+		if err := auth.addResponse(z, response.Msg); err != nil {
+			Warn(fmt.Sprintf("dnssec: queueing response for authentication failed: %v", err))
+		}
 	}
 
 	if len(response.Msg.Answer) == 0 && recordsOfTypeExist(response.Msg.Ns, dns.TypeNS) && !recordsOfTypeExist(response.Msg.Ns, dns.TypeSOA) {

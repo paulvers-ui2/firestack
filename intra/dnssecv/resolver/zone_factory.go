@@ -23,7 +23,10 @@ func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS,
 	case PrimedButNeedsEnhancing:
 		if !LazyEnrichment {
 			go func() {
-				enrichPool(ctx, name, pool, exchanger)
+				// FIRESTACK PATCH (P8): log enrichment failures.
+				if err := enrichPool(ctx, name, pool, exchanger); err != nil {
+					Debug(fmt.Sprintf("pool enrichment for [%s]: %v", name, err))
+				}
 			}()
 		}
 	case PoolPrimed:

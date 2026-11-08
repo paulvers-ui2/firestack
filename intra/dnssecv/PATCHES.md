@@ -35,10 +35,23 @@ dropped (they need `testify`; run them upstream before each re-vendor).
   trace labels; replaced with 16 bytes from `crypto/rand`. One fewer
   dependency (NIST SSDF PW.4).
 
+- **P6 — canonical name ordering fix** (`dnssec/doe/functions.go`, found
+  by CodeQL). Upstream decoded `\DDD` escapes with `string(rune(n))`, which
+  emits UTF-8 (`\200` → bytes `C3 88`, not `0xC8`) and accepted values above
+  255. It also left `\X` escapes undecoded and didn't lowercase escaped
+  letters. Any of these can mis-order NSEC owner names (RFC 4034 §6.1) and so
+  break denial-of-existence proofs for names containing escaped octets.
+  Covered by `functions_firestack_test.go`. **Worth reporting upstream.**
+- **P7 — RRSIG validity clamp** (`dnssec/authenticate_rrset.go`, gosec
+  G115). An expired signature made the remaining-validity delta negative,
+  which wrapped to a huge `uint32`. Now clamped to `[0, MaxUint32]`.
+- **P8 — errors no longer dropped** (`resolver_exchange.go`,
+  `zone_factory.go`, gosec G104). Logged via the resolver's Warn/Debug hooks.
+
 ## Re-vendoring checklist
 
 1. Diff upstream against the pinned SHA; read every change in `dnssec/`.
-2. Re-apply P1–P5; `grep -rn "FIRESTACK PATCH"` must list them all.
+2. Re-apply P1–P8; `grep -rn "FIRESTACK PATCH"` must list them all.
 3. Run upstream's own tests in a scratch checkout.
 4. `go test -race ./intra/dnssecv/...` here, then `DNSSECV_LIVE=1` on a
    network that allows UDP/TCP 53.

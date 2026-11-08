@@ -2,7 +2,6 @@ package doe
 
 import (
 	"github.com/miekg/dns"
-	"strconv"
 	"strings"
 )
 
@@ -51,22 +50,45 @@ func canonicalCmp(a, b string) int {
 	return 0
 }
 
-// Convert escaped octets (e.g., \001) to their byte values for comparison
+// canonicalDecodeEscaped turns a presentation-format label into its wire
+// octets for RFC 4034 §6.1 canonical ordering.
+//
+// FIRESTACK PATCH (P6): upstream decoded `\DDD` with string(rune(n)), which
+// emits UTF-8, so `\200` became the two bytes C3 88 instead of the single
+// octet 0xC8, and values above 255 were accepted. It also left `\X` escapes
+// (e.g. `\.`) undecoded and did not lowercase escaped ASCII letters. Each of
+// these can mis-order NSEC owner names and so break denial-of-existence
+// proofs. Now: `\DDD` (0-255 only) -> one octet; `\X` -> X; A-Z -> a-z.
+// An out-of-range `\DDD` is kept verbatim (miekg/dns rejects such names).
 func canonicalDecodeEscaped(label string) string {
-	decoded := ""
+	out := make([]byte, 0, len(label))
 	for i := 0; i < len(label); i++ {
-		if label[i] == '\\' && i+3 < len(label) && canonicalIsDigit(label[i+1]) && canonicalIsDigit(label[i+2]) && canonicalIsDigit(label[i+3]) {
-			// Decode escaped octet as a numeric value
-			octetValue, err := strconv.Atoi(label[i+1 : i+4])
-			if err == nil {
-				decoded += string(rune(octetValue))
+		c := label[i]
+		if c == '\\' && i+1 < len(label) {
+			if i+3 < len(label) && canonicalIsDigit(label[i+1]) && canonicalIsDigit(label[i+2]) && canonicalIsDigit(label[i+3]) {
+				n := int(label[i+1]-'0')*100 + int(label[i+2]-'0')*10 + int(label[i+3]-'0')
+				if n <= 255 {
+					out = append(out, lowerASCII(byte(n)))
+					i += 3
+					continue
+				}
+				out = append(out, c) // invalid escape: keep literally
+				continue
 			}
-			i += 3 // Skip the escaped characters
-		} else {
-			decoded += string(label[i])
+			out = append(out, lowerASCII(label[i+1]))
+			i++
+			continue
 		}
+		out = append(out, lowerASCII(c))
 	}
-	return decoded
+	return string(out)
+}
+
+func lowerASCII(b byte) byte {
+	if b >= 'A' && b <= 'Z' {
+		return b + ('a' - 'A')
+	}
+	return b
 }
 
 // Check if a character is a digit
