@@ -89,7 +89,11 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 					// The signature was verified.
 					sig.key = key
 					sig.verified = true
-					sig.dsSha256 = key.ToDS(dns.SHA256).Digest
+					// FIRESTACK PATCH (P9): ToDS returns nil for keys it
+					// can't digest; don't dereference blindly.
+					if ds := key.ToDS(dns.SHA256); ds != nil {
+						sig.dsSha256 = ds.Digest
+					}
 					break
 				}
 

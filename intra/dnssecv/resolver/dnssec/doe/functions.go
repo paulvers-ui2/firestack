@@ -17,6 +17,18 @@ func wildcardName(name string) string {
 func canonicalCmp(a, b string) int {
 	labelsA := dns.SplitDomainName(dns.CanonicalName(a))
 	labelsB := dns.SplitDomainName(dns.CanonicalName(b))
+	// FIRESTACK PATCH (P9): SplitDomainName returns nil for the root; the
+	// root sorts before every other name.
+	if len(labelsA) == 0 || len(labelsB) == 0 {
+		switch {
+		case len(labelsA) == len(labelsB):
+			return 0
+		case len(labelsA) == 0:
+			return -1
+		default:
+			return 1
+		}
+	}
 
 	minLength := min(len(labelsA), len(labelsB))
 

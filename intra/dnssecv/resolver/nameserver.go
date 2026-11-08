@@ -92,6 +92,11 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 		}
 
 		// Then we can return straight away.
+		// FIRESTACK PATCH (P9): guard a nil Msg with a nil error.
+		if r.Msg == nil {
+			r.Err = fmt.Errorf("empty response from %s", addr)
+			continue
+		}
 		if !r.Msg.Truncated {
 			return &r
 		}

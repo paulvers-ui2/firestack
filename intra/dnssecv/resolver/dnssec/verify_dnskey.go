@@ -21,7 +21,17 @@ func verifyDNSKEYs(ctx context.Context, r *result, keys []dns.RR, dsRecordsFromP
 	keySigningKeys := make([]*dns.DNSKEY, 0, len(dsRecordsFromParent))
 	for _, d := range dsRecordsFromParent {
 		for _, k := range zoneKeys {
-			if d.Algorithm == k.Algorithm && d.KeyTag == k.KeyTag() && strings.EqualFold(d.Digest, k.ToDS(d.DigestType).Digest) {
+			if d.Algorithm != k.Algorithm || d.KeyTag != k.KeyTag() {
+				continue
+			}
+			// FIRESTACK PATCH (P9): d.DigestType comes from the parent's DS
+			// record on the network. ToDS returns nil for digest types
+			// miekg/dns doesn't implement (e.g. GOST), and upstream
+			// dereferenced it: a zone publishing such a DS crashed the lookup.
+			// An undigestable DS simply doesn't match (RFC 4035 §5.2 allows
+			// ignoring DS records with unsupported digest types).
+			computed := k.ToDS(d.DigestType)
+			if computed != nil && strings.EqualFold(d.Digest, computed.Digest) {
 				keySigningKeys = append(keySigningKeys, k)
 				break
 			}

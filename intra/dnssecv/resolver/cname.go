@@ -8,6 +8,13 @@ import (
 )
 
 func cname(ctx context.Context, qmsg *dns.Msg, r *Response, exchanger exchanger) error {
+	// FIRESTACK PATCH (P9): explicit nil/empty guards (nilaway).
+	if r == nil || r.Msg == nil {
+		return fmt.Errorf("unable to follow cname: no response to extend")
+	}
+	if qmsg == nil || len(qmsg.Question) == 0 {
+		return fmt.Errorf("unable to follow cname: query has no question")
+	}
 	cnames := extractRecords[*dns.CNAME](r.Msg.Answer)
 
 	targets := make([]string, len(cnames))
@@ -37,10 +44,15 @@ func cname(ctx context.Context, qmsg *dns.Msg, r *Response, exchanger exchanger)
 
 		cnameRMsg := exchanger.exchange(ctx, cnameQMsg)
 
-		if cnameRMsg.HasError() {
+		// FIRESTACK PATCH (P9): explicit checks instead of nil-tolerant
+		// helper methods, so the analyser (and readers) can see Msg != nil.
+		if cnameRMsg == nil {
+			return fmt.Errorf("unable to follow cname [%s]: no response", c.Target)
+		}
+		if cnameRMsg.Err != nil {
 			return cnameRMsg.Err
 		}
-		if cnameRMsg.IsEmpty() {
+		if cnameRMsg.Msg == nil {
 			return fmt.Errorf("unable to follow cname [%s]", c.Target)
 		}
 

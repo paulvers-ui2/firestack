@@ -48,10 +48,19 @@ dropped (they need `testify`; run them upstream before each re-vendor).
 - **P8 — errors no longer dropped** (`resolver_exchange.go`,
   `zone_factory.go`, gosec G104). Logged via the resolver's Warn/Debug hooks.
 
+- **P9 — nil safety** (`cname.go`, `nameserver.go`, `dnssec/doe/functions.go`,
+  `dnssec/authenticate_rrset.go`, `dnssec/verify_dnskey.go`; found by
+  nilaway in CI). The important one: `verify_dnskey.go` called
+  `k.ToDS(d.DigestType).Digest` with the digest type taken from the parent's
+  DS record on the network. `ToDS` returns nil for types miekg/dns doesn't
+  implement (e.g. GOST, 3), so **a zone publishing such a DS crashed the
+  lookup**. An undigestable DS now just doesn't match (RFC 4035 §5.2).
+  Covered by `verify_dnskey_firestack_test.go`. **Worth reporting upstream.**
+
 ## Re-vendoring checklist
 
 1. Diff upstream against the pinned SHA; read every change in `dnssec/`.
-2. Re-apply P1–P8; `grep -rn "FIRESTACK PATCH"` must list them all.
+2. Re-apply P1–P9; `grep -rn "FIRESTACK PATCH"` must list them all.
 3. Run upstream's own tests in a scratch checkout.
 4. `go test -race ./intra/dnssecv/...` here, then `DNSSECV_LIVE=1` on a
    network that allows UDP/TCP 53.
