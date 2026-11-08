@@ -80,7 +80,7 @@ func canonicalDecodeEscaped(label string) string {
 			if i+3 < len(label) && canonicalIsDigit(label[i+1]) && canonicalIsDigit(label[i+2]) && canonicalIsDigit(label[i+3]) {
 				n := int(label[i+1]-'0')*100 + int(label[i+2]-'0')*10 + int(label[i+3]-'0')
 				if n <= 255 {
-					out = append(out, lowerASCII(byte(n)))
+					out = append(out, lowerASCII(byte(n))) // #nosec G115 -- n <= 255 checked above
 					i += 3
 					continue
 				}

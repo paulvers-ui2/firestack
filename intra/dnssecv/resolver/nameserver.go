@@ -50,7 +50,8 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 		zoneName = z
 	}
 
-	if m == nil {
+	// FIRESTACK PATCH (P10): also refuse a message with no question (indexed below).
+	if m == nil || len(m.Question) == 0 {
 		return newResponseError(fmt.Errorf("%w in zone [%s]", ErrNilMessageSentToExchange, zoneName))
 	}
 

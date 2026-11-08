@@ -2,8 +2,8 @@ package resolver
 
 import (
 	"context"
-	"github.com/miekg/dns"
 	"github.com/celzero/firestack/intra/dnssecv/resolver/dnssec"
+	"github.com/miekg/dns"
 	"time"
 )
 
@@ -24,7 +24,8 @@ func (r *Response) IsEmpty() bool {
 }
 
 func (r *Response) truncated() bool {
-	if r.IsEmpty() {
+	// FIRESTACK PATCH (P10): explicit guard (was via IsEmpty()).
+	if r == nil || r.Msg == nil {
 		return false
 	}
 	return r.Msg.Truncated

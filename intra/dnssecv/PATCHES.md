@@ -57,10 +57,25 @@ dropped (they need `testify`; run them upstream before each re-vendor).
   lookup**. An undigestable DS now just doesn't match (RFC 4035 §5.2).
   Covered by `verify_dnskey_firestack_test.go`. **Worth reporting upstream.**
 
+- **P10 — more nil safety** (nilaway, second pass). Real crash paths fixed:
+  `pool_exchange.go` dereferenced a nil response when no nameserver of either
+  address family was available; `resolver_exchange.go` indexed
+  `knownZones[0]` on an empty zone list; `Exchange`, `nameserver.exchange`
+  and `Authenticator.AddResponse` indexed `Question[0]` on question-less
+  messages (the last one on responses straight from the network). Plus
+  explicit guards in `zones.add`, root-hint parsing, pool building and
+  `Response.truncated`.
+
+  Remaining nilaway reports in `resolver/` are reviewed false positives:
+  `net.IP(nil).String()` is safe in Go, and `Question` flows through
+  `msg.Copy()` are rejected at the new entry guards. CI therefore runs
+  nilaway **strict on all firestack code except `resolver/`**, and
+  **report-only on `resolver/`** (`.github/workflows/go.yml`, 🔮 Vet).
+
 ## Re-vendoring checklist
 
 1. Diff upstream against the pinned SHA; read every change in `dnssec/`.
-2. Re-apply P1–P9; `grep -rn "FIRESTACK PATCH"` must list them all.
+2. Re-apply P1–P10; `grep -rn "FIRESTACK PATCH"` must list them all.
 3. Run upstream's own tests in a scratch checkout.
 4. `go test -race ./intra/dnssecv/...` here, then `DNSSECV_LIVE=1` on a
    network that allows UDP/TCP 53.

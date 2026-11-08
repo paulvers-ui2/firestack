@@ -36,6 +36,11 @@ func NewAuth(ctx context.Context, question dns.Question) *Authenticator {
 // We expect one response per zone in the chain.
 // Responses can be passed in nay order and will be buffered, if needed, so they will be processed in the correct order.
 func (a *Authenticator) AddResponse(zone Zone, msg *dns.Msg) error {
+	// FIRESTACK PATCH (P10): responses come off the network; guard before
+	// indexing Question[0].
+	if zone == nil || msg == nil || len(msg.Question) == 0 {
+		return fmt.Errorf("%w: empty response or zone", ErrNotSubdomain)
+	}
 
 	// The zone name must be an ancestor of the QName.
 	if !dns.IsSubDomain(zone.Name(), a.question.Name) {

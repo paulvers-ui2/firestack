@@ -45,6 +45,12 @@ func (pool *nameserverPool) exchange(ctx context.Context, m *dns.Msg) *Response 
 		}
 	}
 
+	// FIRESTACK PATCH (P10): if no server of either family was available,
+	// response stayed nil and the error path below dereferenced it.
+	if response == nil {
+		response = &Response{}
+	}
+
 	if response.IsEmpty() || response.HasError() {
 		errMsg := fmt.Sprintf("all nameservers tried returned an unsucessful response for qname [%s]", m.Question[0].Name)
 		if z, ok := ctx.Value(ctxZoneName).(string); ok {
@@ -53,7 +59,7 @@ func (pool *nameserverPool) exchange(ctx context.Context, m *dns.Msg) *Response 
 
 		err := fmt.Errorf("%w: %s", ErrUnableToResolveAnswer, errMsg)
 
-		if response.HasError() {
+		if response.Err != nil {
 			// If we already had an error, we'll wrap it with this one.
 			response.Err = fmt.Errorf("%w: %w", response.Err, err)
 		} else {

@@ -147,6 +147,9 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 		ttl = min(minTtlSeen, ttl)
 
 		for _, addr := range a {
+			if addr == nil { // FIRESTACK PATCH (P10):
+				continue
+			}
 			pool.ipv4 = append(pool.ipv4, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.A.String(),
@@ -154,6 +157,9 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 		}
 
 		for _, addr := range aaaa {
+			if addr == nil {
+				continue
+			}
 			pool.ipv6 = append(pool.ipv6, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.AAAA.String(),
@@ -197,6 +203,9 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 		ttl = min(minTtlSeen, ttl)
 
 		for _, addr := range a {
+			if addr == nil { // FIRESTACK PATCH (P10):
+				continue
+			}
 			pool.ipv4 = append(pool.ipv4, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.A.String(),
@@ -204,6 +213,9 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 		}
 
 		for _, addr := range aaaa {
+			if addr == nil {
+				continue
+			}
 			pool.ipv6 = append(pool.ipv6, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.AAAA.String(),

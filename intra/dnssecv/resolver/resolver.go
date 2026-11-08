@@ -72,11 +72,17 @@ func buildRootServerPool() (*nameserverPool, error) {
 	for rr, ok := zp.Next(); ok; rr, ok = zp.Next() {
 		switch rr := rr.(type) {
 		case *dns.A:
+			if rr == nil { // FIRESTACK PATCH (P10):
+				continue
+			}
 			pool.ipv4 = append(pool.ipv4, &nameserver{
 				hostname: canonicalName(rr.Header().Name),
 				addr:     rr.A.String(),
 			})
 		case *dns.AAAA:
+			if rr == nil {
+				continue
+			}
 			pool.ipv6 = append(pool.ipv6, &nameserver{
 				hostname: canonicalName(rr.Header().Name),
 				addr:     rr.AAAA.String(),
