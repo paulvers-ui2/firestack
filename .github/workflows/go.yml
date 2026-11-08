@@ -13,6 +13,10 @@ jobs:
     name: Auto tag
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/n2'
+    # The repo default for workflow tokens is read-only; pushing the version
+    # tag needs write ("Resource not accessible by integration" otherwise).
+    permissions:
+      contents: write
     outputs:
       new_tag: ${{ steps.tag.outputs.new_tag }}
     steps:
@@ -229,6 +233,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [auto-tag, build]
     if: needs.auto-tag.outputs.new_tag != '' && needs.build.result == 'success'
+    permissions:
+      contents: write # create the release
     steps:
       - name: Download AAR artifact
         uses: actions/download-artifact@v4
@@ -244,3 +250,44 @@ jobs:
           files: |
             dist/firestack.aar
             dist/firestack-debug.aar
+
+      # Deliver the same AAR to the app repo from here. A release created with
+      # GITHUB_TOKEN does not trigger other workflows (release-aar.yml would
+      # never start), and this reuses the build instead of compiling again.
+      - name: Check app push token
+        env:
+          T1: ${{ secrets.AAR_TO_RETHINK_DNS_MASQUE_REPO }}
+          T2: ${{ secrets.RETHINK_APP_PUSH_TOKEN }}
+        run: |
+          if [ -z "$T1$T2" ]; then
+            echo "::error title=Missing secret::Set AAR_TO_RETHINK_DNS_MASQUE_REPO (fine-grained token, Contents: read & write on paulvers-ui2/rethink-app-masque only)."
+            exit 1
+          fi
+      - name: Checkout rethink-app-masque
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: paulvers-ui2/rethink-app-masque
+          token: ${{ secrets.AAR_TO_RETHINK_DNS_MASQUE_REPO || secrets.RETHINK_APP_PUSH_TOKEN }}
+          path: rethink-app-masque
+      - name: Commit AAR to rethink-app-masque
+        working-directory: rethink-app-masque
+        env:
+          TAG: ${{ needs.auto-tag.outputs.new_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p app/libs
+          cp ../dist/firestack.aar app/libs/firestack-local.aar
+          if [ -f ../dist/build/intra/tun2socks-sources.jar ]; then
+            cp ../dist/build/intra/tun2socks-sources.jar app/libs/
+          fi
+          sum=$(sha256sum app/libs/firestack-local.aar | cut -d' ' -f1)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/libs/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: firestack AAR ${TAG} (paulvers-ui2/firestack@${GITHUB_SHA::9}, sha256 ${sum}) [skip ci]"
+          git push origin HEAD
+          echo "::notice title=AAR delivered::${TAG} -> paulvers-ui2/rethink-app-masque app/libs/firestack-local.aar (sha256 ${sum})"
