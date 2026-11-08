@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: '>=1.26' # same as the release build in go.yml (newest patched Go)          check-latest: true
       - name: go vet + test (dnssecv)
         run: |
           go vet ./intra/dnssecv/...
@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: '>=1.26' # same as the release build in go.yml (newest patched Go)          check-latest: true
       - run: DNSSECV_LIVE=1 go test -count=1 -v -run Live ./intra/dnssecv/
 
   gosec:
@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: '>=1.26' # same as the release build in go.yml (newest patched Go)          check-latest: true
       - name: Run gosec
         # Pinned tool version; bump deliberately. Report-only on the whole
         # tree (inherited findings), so the job uploads SARIF and does not fail.
@@ -98,7 +98,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: '>=1.26' # same as the release build in go.yml (newest patched Go)          check-latest: true
       - name: Run govulncheck (blocking on reachable vulnerabilities)
         # Fails the job when firestack's code can reach a known-vulnerable
         # function. Module-only findings (vulnerable code never called) are
@@ -118,6 +118,9 @@ jobs:
         run: |
           "$(go env GOPATH)/bin/govulncheck" -format sarif ./... > govulncheck.sarif || true
       - if: always()
+        # govulncheck can emit duplicate stack entries that code scanning
+        # rejects as invalid SARIF; the blocking check is the step above.
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: govulncheck.sarif
@@ -137,7 +140,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          go-version: '>=1.26' # same as the release build in go.yml (newest patched Go)          check-latest: true
       - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: go
