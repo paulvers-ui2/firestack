@@ -99,11 +99,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      - name: Run govulncheck (text, for the log)
-        # First run found reachable golang.org/x/net/http2 vulns that predate
-        # this workflow. Report-only until the go.mod bump lands; then delete
-        # `continue-on-error` so new reachable CVEs block merges.
-        continue-on-error: true
+      - name: Run govulncheck (blocking on reachable vulnerabilities)
+        # Fails the job when firestack's code can reach a known-vulnerable
+        # function. Module-only findings (vulnerable code never called) are
+        # listed in the SARIF upload below but do not fail the build.
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           "$(go env GOPATH)/bin/govulncheck" ./...
