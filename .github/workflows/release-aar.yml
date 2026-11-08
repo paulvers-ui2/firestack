@@ -16,14 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout firestack
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: "1.26"
+          # Same as the release build in go.yml: newest patched Go, so the
+          # .aar never ships a standard library with known vulnerabilities.
+          go-version: '>=1.26'
+          check-latest: true
 
       - name: Set up JDK (for Android/gomobile toolchain)
         uses: actions/setup-java@v4
@@ -51,7 +54,7 @@ jobs:
           test -f firestack.aar
 
       - name: Upload build artifact (CI record)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: firestack-aar
           path: |
@@ -69,11 +72,21 @@ jobs:
             build/intra/tun2socks-sources.jar
 
       # --- 2. Push AAR into paulvers-ui/rethink-app-masque:app/libs ---
+      - name: Check push token
+        if: github.event_name == 'release'
+        env:
+          PUSH_TOKEN: ${{ secrets.RETHINK_APP_PUSH_TOKEN }}
+        run: |
+          if [ -z "$PUSH_TOKEN" ]; then
+            echo "::error title=Missing secret::RETHINK_APP_PUSH_TOKEN is not set in paulvers-ui2/firestack. Create a fine-grained token with Contents: read & write on paulvers-ui2/rethink-app-masque only, and save it as this repository secret."
+            exit 1
+          fi
+
       - name: Checkout rethink-app-masque
         if: github.event_name == 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          repository: paulvers-ui/rethink-app-masque
+          repository: paulvers-ui2/rethink-app-masque
           token: ${{ secrets.RETHINK_APP_PUSH_TOKEN }}
           path: rethink-app-masque
 
