@@ -22,23 +22,34 @@ jobs:
           cache: false
       - name: Bump, tidy, verify, commit
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # Each step reports its own failure as an annotation (readable via the API).
+          step() {
+            local name="$1"; shift
+            if ! out=$("$@" 2>&1); then
+              printf '%s\n' "$out" | tail -25 > /tmp/err.txt
+              echo "::error title=bump step failed: ${name}::$(tr '\n' ' ' < /tmp/err.txt | cut -c1-3500)"
+              exit 1
+            fi
+            printf '%s\n' "$out" | tail -5
+          }
+          go version
           # Reachable vulns (govulncheck on n2): GO-2026-6617, -6612, -6611,
           # -6610, -6603 (fixed x/net 0.60.0), -5026, -4918; GO-2026-5970 (x/text).
-          go get golang.org/x/net@v0.61.0 golang.org/x/text@v0.40.0
-          go mod tidy
-          go mod verify
-          go vet ./intra/dnssecv/... ./intra/core/...
-          go build ./...
+          step "go get" go get golang.org/x/net@v0.61.0 golang.org/x/text@v0.40.0
+          step "go mod tidy" go mod tidy
+          step "go mod verify" go mod verify
+          step "go build" go build ./...
+          step "go vet dnssecv" go vet ./intra/dnssecv/...
           git rm -q .github/workflows/tmp-bump-deps.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add go.mod go.sum
-          git commit -m "deps: golang.org/x/net v0.61.0, golang.org/x/text v0.40.0
+          echo "::notice title=go.mod diff::$(git diff --cached go.mod | grep -E '^[-+]\s' | tr '\n' ' ' | cut -c1-2000)"
+          step "git commit" git commit -m "deps: golang.org/x/net v0.61.0, golang.org/x/text v0.40.0
 
           Fixes the vulnerabilities govulncheck reports as reachable on n2:
           GO-2026-6617, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6603,
           GO-2026-5026, GO-2026-4918 (x/net http2) and GO-2026-5970 (x/text).
           Computed on the runner by the self-deleting tmp-bump-deps workflow."
-          git diff --stat HEAD~1 HEAD
-          git push origin HEAD:fix/xnet-vulns
+          step "git push" git push origin HEAD:fix/xnet-vulns
