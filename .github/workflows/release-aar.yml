@@ -75,10 +75,10 @@ jobs:
       - name: Check push token
         if: github.event_name == 'release'
         env:
-          PUSH_TOKEN: ${{ secrets.RETHINK_APP_PUSH_TOKEN }}
+          PUSH_TOKEN: ${{ secrets.AAR_TO_RETHINK_DNS_MASQUE_REPO || secrets.RETHINK_APP_PUSH_TOKEN }}
         run: |
           if [ -z "$PUSH_TOKEN" ]; then
-            echo "::error title=Missing secret::RETHINK_APP_PUSH_TOKEN is not set in paulvers-ui2/firestack. Create a fine-grained token with Contents: read & write on paulvers-ui2/rethink-app-masque only, and save it as this repository secret."
+            echo "::error title=Missing secret::AAR_TO_RETHINK_DNS_MASQUE_REPO is not set in paulvers-ui2/firestack. Create a fine-grained token with Contents: read & write on paulvers-ui2/rethink-app-masque only, and save it as this repository secret."
             exit 1
           fi
 
@@ -87,7 +87,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: paulvers-ui2/rethink-app-masque
-          token: ${{ secrets.RETHINK_APP_PUSH_TOKEN }}
+          token: ${{ secrets.AAR_TO_RETHINK_DNS_MASQUE_REPO || secrets.RETHINK_APP_PUSH_TOKEN }}
           path: rethink-app-masque
 
       - name: Copy AAR into rethink-app-masque
