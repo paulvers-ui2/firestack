@@ -2,8 +2,10 @@ package dnssec
 
 import (
 	"fmt"
-	"github.com/miekg/dns"
+	"math"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section section) (signatures, error) {
@@ -48,7 +50,15 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 		utc := time.Now().UTC().Unix()
 		mode := (int64(rrsig.Expiration) - utc) / year68
 		te := int64(rrsig.Expiration) + mode*year68
-		delta := uint32(te - utc)
+		// FIRESTACK PATCH (P7): clamp before narrowing. An already-expired
+		// signature made te-utc negative, which wrapped to a huge uint32.
+		remaining := te - utc
+		if remaining < 0 {
+			remaining = 0
+		} else if remaining > math.MaxUint32 {
+			remaining = math.MaxUint32
+		}
+		delta := uint32(remaining)
 		sig.ttl = min(sig.ttl, delta)
 
 		for _, rr := range sig.rrset {

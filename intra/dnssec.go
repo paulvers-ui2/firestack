@@ -189,12 +189,21 @@ func dnssecCtx(timeoutMs int64) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
 }
 
+// clampRcode keeps gosec G115 honest: DNS rcodes are 12-bit (0..4095), and
+// dnssecv uses -1 for "no response".
+func clampRcode(rc int) int32 {
+	if rc < -1 || rc > 4095 {
+		return -1
+	}
+	return int32(rc)
+}
+
 func toDNSSECResult(r dnssecv.Result) *DNSSECResult {
 	out := &DNSSECResult{
 		Name:       r.Name,
 		Qtype:      int32(r.Qtype),
 		Status:     int32(r.Status),
-		Rcode:      int32(r.Rcode),
+		Rcode:      clampRcode(r.Rcode),
 		Denial:     r.Denial,
 		Answers:    strings.Join(r.Answers, "\n"),
 		DurationMs: r.Duration.Milliseconds(),

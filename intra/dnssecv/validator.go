@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -137,7 +138,7 @@ func New(cfg Config) (*Validator, error) {
 	resolver.TimeoutUDP = cfg.UDPTimeout
 	resolver.TimeoutTCP = cfg.TCPTimeout
 	resolver.MaxQueriesPerRequest = cfg.MaxQueries
-	resolver.MaxAllowedTTL = uint32(cfg.CacheMaxTTL / time.Second)
+	resolver.MaxAllowedTTL = ttlSeconds(cfg.CacheMaxTTL)
 	resolver.SuppressBogusResponseSections = true // RFC 4035 §5.5, never relax
 	resolver.Cache = cache
 	v := &Validator{
@@ -152,6 +153,18 @@ func New(cfg Config) (*Validator, error) {
 	v.ex = resolver.NewResolver()
 	configured = true
 	return v, nil
+}
+
+// ttlSeconds converts a duration to whole seconds, clamped to uint32.
+func ttlSeconds(d time.Duration) uint32 {
+	s := int64(d / time.Second)
+	if s < 0 {
+		return 0
+	}
+	if s > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(s)
 }
 
 func withDefaults(c Config) Config {
